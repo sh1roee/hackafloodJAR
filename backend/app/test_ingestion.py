@@ -187,3 +187,41 @@ print("✓ ALL TESTS PASSED!")
 print("="*80)
 print("\nYour RAG pipeline is working correctly.")
 print(f"Collection '{store.collection_name}' has {stats.get('total_entries', 0)} entries")
+
+# Optional Step 8: Ingest Laguna agricultural context
+print("\n[8] Laguna Agricultural Context (OPTIONAL):")
+print("-"*80)
+print("Would you like to ingest the Laguna agricultural price context?")
+print("This will add additional knowledge about Laguna province prices.")
+ingest_laguna = input("Ingest Laguna context? (y/n): ").strip().lower()
+
+if ingest_laguna == 'y':
+    try:
+        from processing.ingest_pipeline import IngestionPipeline
+        
+        pipeline = IngestionPipeline(
+            openai_api_key=openai_key,
+            chromadb_api_key=chromadb_key
+        )
+        
+        result = pipeline.ingest_laguna_context()
+        
+        if result['success']:
+            print(f"✓ Ingested {result.get('count', 0)} Laguna context chunks")
+            
+            # Show updated stats
+            stats = store.get_collection_stats()
+            print(f"✓ Collection now has {stats.get('total_entries', 0)} total entries")
+        else:
+            print(f"✗ Laguna context ingestion failed: {result.get('error', 'Unknown error')}")
+    
+    except Exception as e:
+        print(f"✗ Laguna context ingestion error: {e}")
+        import traceback
+        traceback.print_exc()
+else:
+    print("Skipped Laguna context ingestion.")
+
+print("\n" + "="*80)
+print("TESTING COMPLETE")
+print("="*80)

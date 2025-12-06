@@ -33,23 +33,45 @@ class ChromaDBStore:
         self.collection_name = collection_name
         
         try:
-            # Connect to ChromaDB cloud
-            self.client = chromadb.CloudClient(
-                api_key=api_key,
-                tenant=tenant,
-                database=database
-            )
-            
+            # Prefer CloudClient if credentials are provided
+            if api_key and tenant and database:
+                logger.info("Connecting to ChromaDB Cloud...")
+                try:
+                    self.client = chromadb.CloudClient(
+                        api_key=api_key,
+                        tenant=tenant,
+                        database=database
+                    )
+                    logger.info("✓ Connected to ChromaDB Cloud")
+                except Exception as cloud_err:
+                    logger.error(f"Cloud connection failed: {cloud_err}")
+                    logger.warning("Falling back to local PersistentClient.")
+                    persist_dir = os.path.join(os.path.dirname(__file__), "..", "chromadb_local")
+                    self.client = chromadb.PersistentClient(path=os.path.abspath(persist_dir))
+                    logger.info(f"✓ Using local ChromaDB at {os.path.abspath(persist_dir)}")
+            else:
+                # Fallback to local persistent client
+                logger.warning("Cloud credentials missing. Falling back to local PersistentClient.")
+                persist_dir = os.path.join(os.path.dirname(__file__), "..", "chromadb_local")
+                self.client = chromadb.PersistentClient(path=os.path.abspath(persist_dir))
+                logger.info(f"✓ Using local ChromaDB at {os.path.abspath(persist_dir)}")
+
             # Get or create collection
             self.collection = self.client.get_or_create_collection(
                 name=collection_name,
                 metadata={"description": "DA Daily Price Index for NCR - Agricultural commodity prices"}
             )
-            
+
+            # If Cloud, optionally validate embedding dimension (OpenAI text-embedding-3-small = 1536)
+            try:
+                _ = self.collection.count()
+            except Exception as e:
+                logger.warning(f"Collection access check failed: {e}")
+
             logger.info(f"✓ Connected to ChromaDB collection: {collection_name}")
-            
+
         except Exception as e:
-            logger.error(f"Failed to connect to ChromaDB: {e}")
+            logger.error(f"Failed to initialize ChromaDB client: {e}")
             raise
     
     def add_prices(self, price_data: List[Dict], embeddings: List[List[float]], texts: List[str]) -> Dict:
@@ -89,6 +111,62 @@ class ChromaDBStore:
             
         except Exception as e:
             logger.error(f"Failed to add prices: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    def add_context_chunks(self, chunks: List[str], embeddings: List[List[float]], 
+                          source: str, metadata_extra: Dict = None) -> Dict:
+        """
+        Add context chunks (e.g., Laguna agricultural data) to ChromaDB
+        
+        Args:
+            chunks: List of text chunks
+            embeddings: List of embedding vectors
+            source: Source identifier (e.g., "laguna_agricultural_data")
+            metadata_extra: Additional metadata to attach to each chunk
+            
+        Returns:
+            Result dictionary with count of added items
+        """
+        try:
+            # Generate IDs for context chunks
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            ids = [f"{source}_{timestamp}_{idx}" for idx in range(len(chunks))]
+            
+            # Create metadata for each chunk
+            metadatas = []
+            for idx, chunk in enumerate(chunks):
+                metadata = {
+                    "source": source,
+                    "chunk_index": idx,
+                    "timestamp": timestamp,
+                    "content_type": "context"
+                }
+                if metadata_extra:
+                    metadata.update(metadata_extra)
+                metadatas.append(metadata)
+            
+            # Add to collection
+            self.collection.add(
+                ids=ids,
+                embeddings=embeddings,
+                documents=chunks,
+                metadatas=metadatas
+            )
+            
+            logger.info(f"✓ Added {len(chunks)} context chunks from {source} to ChromaDB")
+            
+            return {
+                "success": True,
+                "count": len(chunks),
+                "source": source,
+                "collection": self.collection_name
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to add context chunks: {e}")
             return {
                 "success": False,
                 "error": str(e)

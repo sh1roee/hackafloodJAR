@@ -104,7 +104,8 @@ class PriceCache:
         query_lower = query.lower()
         
         # Extract location (handles city → NCR mapping)
-        location = extract_location_from_query(query)
+        # Default to 'NCR' when no explicit location found
+        location = extract_location_from_query(query) or 'NCR'
         
         # Try to find commodity in query
         found_commodity = None
@@ -120,11 +121,16 @@ class PriceCache:
         if not found_prices:
             return None
         
-        # Return the first matching price (or average if multiple)
-        if len(found_prices) == 1:
-            return found_prices[0]
+        # If a location was specified, prefer entries matching that location
+        if location:
+            loc_matches = [p for p in found_prices if p.get('location', '').lower() == location.lower()]
+            if loc_matches:
+                # If exactly one match, return it; else return first match
+                if len(loc_matches) == 1:
+                    return loc_matches[0]
+                return loc_matches[0]
         
-        # If multiple variants, return the most common one
+        # If multiple variants, return the first entry as a simple heuristic
         # (e.g., "Regular Milled Rice" is more common than "Basmati")
         # For now, just return first one
         return found_prices[0]
@@ -179,7 +185,9 @@ class PriceCache:
             date_formatted = "ngayong araw"
         
         # Build response
-        response = f"Sa petsang {date_formatted}, ang presyo ng {commodity_tagalog} ay ₱{price:.2f} {unit} sa NCR."
+        # Respect location from the price data (Laguna, NCR, etc.)
+        location = price_data.get('location', 'NCR')
+        response = f"Sa petsang {date_formatted}, ang presyo ng {commodity_tagalog} ay ₱{price:.2f} {unit} sa {location}."
         
         # Add specification if important
         if spec and spec != commodity:

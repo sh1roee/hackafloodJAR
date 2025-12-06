@@ -82,8 +82,29 @@ class QueryEngine:
             # Step 3: Generate query embedding
             query_embedding = self.embeddings.embed_query(translated_query)
             
-            # Step 4: Search ChromaDB
-            search_results = self.chromadb.search_prices(query_embedding, n_results=top_k)
+            # Step 4: Build filter based on location
+            filter_dict = None
+            if location:
+                if location == "Laguna":
+                    # Filter for Laguna data
+                    filter_dict = {"location": "Laguna"}
+                    logger.info(f"Applying Laguna filter: {filter_dict}")
+                elif location == "NCR":
+                    # Filter for NCR data (exclude Laguna)
+                    filter_dict = {
+                        "$or": [
+                            {"location": {"$ne": "Laguna"}},
+                            {"location": None}
+                        ]
+                    }
+                    logger.info(f"Applying NCR filter")
+            
+            # Step 5: Search ChromaDB with location filter
+            search_results = self.chromadb.search_prices(
+                query_embedding, 
+                n_results=top_k,
+                filter_dict=filter_dict
+            )
             
             if not search_results['success']:
                 return {
@@ -155,10 +176,22 @@ class QueryEngine:
         Returns:
             Generated answer
         """
-        # Build context from sources
+        # Build context from sources and determine region
         context_parts = []
+        region = None
+        
         for i, source in enumerate(sources, 1):
             metadata = source['metadata']
+            
+            # Determine region from metadata
+            if not region:
+                location = metadata.get('location', '')
+                if location == 'Laguna':
+                    region = 'Laguna'
+                else:
+                    region = 'NCR'
+            
+            # Build context string
             commodity = metadata.get('commodity', 'Unknown')
             price = metadata.get('price', 0)
             spec = metadata.get('specification', '')
@@ -167,14 +200,38 @@ class QueryEngine:
             context_part = f"{i}. {commodity}: ₱{price:.2f}"
             if spec:
                 context_part += f" ({spec})"
-            context_part += f" - {date}"
+            if date:
+                context_part += f" - {date}"
             
             context_parts.append(context_part)
         
         context = "\n".join(context_parts)
         
+        # Default to NCR if no region detected
+        if not region:
+            region = 'NCR'
+        
+        # Create region-specific prompt
+        if region == 'Laguna':
+            location_instruction = """- Ang lahat ng datos ay para sa LAGUNA province
+- Gamitin "Laguna" sa sagot, HINDI "NCR"
+- FORMAT NG SAGOT: "Sa petsang [buwan at araw], ang presyo ng [produkto] ay ₱[presyo] [unit] sa Laguna"
+- HALIMBAWA:
+  * "Magkano bigas sa Laguna?" → "Sa petsang Disyembre 2024, ang presyo ng bigas ay ₱45.00 bawat kilo sa Laguna"
+  * "Kamatis sa Calamba" → "Sa petsang Disyembre 2024, ang presyo ng kamatis ay ₱45.00 bawat kilo sa Laguna"
+"""
+        else:
+            location_instruction = """- Ang lahat ng datos ay para sa NCR (National Capital Region / Metro Manila)
+- Ang NCR ay may 17 local government units: Caloocan, Las Piñas, Makati, Malabon, Mandaluyong, Manila, Marikina, Muntinlupa, Navotas, Parañaque, Pasay, Pasig, Pateros, Quezon City, San Juan, Taguig, Valenzuela
+- Kung nagtanong tungkol sa specific city (halimbawa: Pasig, Makati, Quezon City), GAMITIN pa rin "NCR" sa sagot dahil ang datos ay pangrehiyon
+- FORMAT NG SAGOT: "Sa petsang [buwan at araw], ang presyo ng [produkto] ay ₱[presyo] [unit] sa NCR"
+- HALIMBAWA:
+  * "Magkano bigas sa Pasig?" → "Sa petsang Disyembre 5, ang presyo ng bigas ay ₱211.00 bawat kilo sa NCR"
+  * "Kamatis sa Makati" → "Sa petsang Disyembre 5, ang presyo ng kamatis ay ₱142.54 bawat kilo sa NCR"
+"""
+        
         # Create prompt - Complete Tagalog translation
-        prompt = f"""Ikaw ay isang helpful assistant para sa mga magsasaka at mamimili sa Pilipinas. Nagbibigay ka ng impormasyon tungkol sa presyo ng mga produkto mula sa Department of Agriculture para sa NCR.
+        prompt = f"""Ikaw ay isang helpful assistant para sa mga magsasaka at mamimili sa Pilipinas. Nagbibigay ka ng impormasyon tungkol sa presyo ng mga produkto mula sa Department of Agriculture.
 
 DATOS NG PRESYO:
 {context}
@@ -182,15 +239,7 @@ DATOS NG PRESYO:
 TANONG NG USER: {user_query}
 
 INSTRUCTIONS:
-- Ang lahat ng datos ay para sa NCR (National Capital Region / Metro Manila)
-- Ang NCR ay may 17 local government units: Caloocan, Las Piñas, Makati, Malabon, Mandaluyong, Manila, Marikina, Muntinlupa, Navotas, Parañaque, Pasay, Pasig, Pateros, Quezon City, San Juan, Taguig, Valenzuela
-- Kung nagtanong tungkol sa specific city (halimbawa: Pasig, Makati, Quezon City), GAMITIN pa rin "NCR" sa sagot dahil ang datos ay pangrehiyon
-- HALIMBAWA:
-  * "Magkano bigas sa Pasig?" → "Sa petsang Disyembre 5, ang presyo ng bigas ay ₱211.00 bawat kilo sa NCR"
-  * "Kamatis sa Makati" → "Sa petsang Disyembre 5, ang presyo ng kamatis ay ₱142.54 bawat kilo sa NCR"
-  * "Rice in Quezon City" → "Sa petsang Disyembre 5, ang presyo ng bigas ay ₱211.00 bawat kilo sa NCR"
-
-- FORMAT NG SAGOT: "Sa petsang [buwan at araw], ang presyo ng [produkto] ay ₱[presyo] [unit] sa NCR"
+{location_instruction}
 
 - UNIT TRANSLATION (lahat Tagalog):
   * "/kg" o "pcs/kg" o "per kilogram" = "bawat kilo"

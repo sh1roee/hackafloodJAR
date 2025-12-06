@@ -53,9 +53,25 @@ if 'messages' not in st.session_state:
 # Helper function to detect if location is mentioned
 def has_location(text: str) -> bool:
     """Check if location is mentioned in the text"""
-    locations = ['ncr', 'metro manila', 'manila', 'maynila', 'quezon city', 'makati', 'pasig', 'mandaluyong']
+    # NCR locations
+    ncr_locations = ['ncr', 'metro manila', 'manila', 'maynila', 'quezon city', 'makati', 'pasig', 'mandaluyong']
+    
+    # Laguna municipalities and cities
+    laguna_locations = [
+        'laguna', 'calamba', 'san pablo', 'bay', 'cavinti', 'pagsanjan', 
+        'alaminos', 'lumban', 'majayjay', 'luisiana', 'cabuyao', 
+        'san pedro', 'biñan', 'binan', 'santa rosa', 'calauan', 'famy', 
+        'los baños', 'los banos', 'liliw', 'mabitac', 'siniloan', 
+        'santa maria', 'paete', 'pangil', 'nagcarlan', 'santa cruz', 
+        'pakil', 'kalayaan', 'pila', 'rizal', 'victoria', 
+        'magdalena', 'carmona', 'tanay', 'canlubang', 'punta', 
+        'kay-anlog', 'parian', 'turbina', 'malitlit', 'del remedio', 
+        'santo angel', 'banilan', 'mamatid'
+    ]
+    
+    all_locations = ncr_locations + laguna_locations
     text_lower = text.lower()
-    return any(loc in text_lower for loc in locations)
+    return any(loc in text_lower for loc in all_locations)
 
 # Helper function to call backend API
 def query_backend(user_message: str):
@@ -82,32 +98,6 @@ def query_backend(user_message: str):
 
 # Title
 st.title("🌾 DA Price Monitor")
-st.caption("Ask about commodity prices in NCR")
-
-# Show example queries
-with st.expander("💡 Mga Halimbawa ng Tanong"):
-    st.markdown("""
-    **Single Product:**
-    - Magkano kamatis sa NCR?
-    - Presyo ng bigas
-    
-    **Multi-Product:** ✨
-    - Magkano kamatis, sibuyas, at bawang?
-    - Presyo ng manok, baboy, at baka
-    
-    **Comparison:** ✨
-    - Ano mas mura, manok o baboy?
-    - Alin ang mas mahal, lokal o imported na bigas?
-    
-    **Budget Planning:** ✨
-    - Ano pwede bilhin ng 500 pesos?
-    - Ano makakuha ko sa 200 pesos?
-    
-    **Category Browsing:** ✨
-    - Presyo ng lahat ng gulay
-    - Lahat ng isda
-    - Mga prutas
-    """)
 
 # Display chat messages
 for message in st.session_state.messages:

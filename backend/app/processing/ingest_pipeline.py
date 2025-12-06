@@ -9,6 +9,7 @@ from pathlib import Path
 import logging
 
 from data_sources.pdf_parser import PricePDFParser
+from data_sources.laguna_agriculture_data import generate_laguna_context_file
 from processing.data_processor import PriceDataProcessor
 from processing.text_chunks import TextChunkGenerator
 from chromadb_store import ChromaDBStore
@@ -49,7 +50,113 @@ class IngestionPipeline:
             collection_name="da_price_index_ncr"
         )
         
+        # Generate Laguna agricultural context file
+        self._ensure_laguna_context_file()
+        
         logger.info("✓ Ingestion pipeline initialized")
+    
+    def _ensure_laguna_context_file(self):
+        """Ensure the Laguna agricultural context file exists"""
+        try:
+            base_dir = Path(__file__).parent.parent
+            output_dir = base_dir / "downloads" / "price_index"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            output_path = output_dir / "laguna_agricultural_prices.txt"
+            
+            if not output_path.exists():
+                logger.info("Generating Laguna agricultural context file...")
+                generate_laguna_context_file(str(output_path))
+            else:
+                logger.info(f"✓ Laguna agricultural context file found: {output_path}")
+        except Exception as e:
+            logger.warning(f"Could not generate Laguna context file: {e}")
+    
+    def ingest_laguna_context(self) -> Dict:
+        """
+        Ingest the Laguna agricultural context file into ChromaDB as individual commodity entries
+        
+        Returns:
+            Result dictionary with ingestion stats
+        """
+        try:
+            logger.info(f"\n{'='*70}")
+            logger.info("INGESTING LAGUNA AGRICULTURAL CONTEXT")
+            logger.info(f"{'='*70}")
+            
+            # Import the Laguna data directly from the Python module
+            from data_sources.laguna_agriculture_data import LAGUNA_AGRICULTURAL_DATA
+            
+            # Convert to individual price entries (like DA PDF data)
+            logger.info("Creating individual commodity entries...")
+            price_entries = []
+            text_chunks = []
+            
+            # Process each category
+            for category, items in LAGUNA_AGRICULTURAL_DATA.items():
+                if category in ['province', 'last_updated']:
+                    continue
+                
+                for item in items:
+                    # Create price entry with proper metadata
+                    price_entry = {
+                        "commodity": item['name'],
+                        "price": item['price_per_kg'],
+                        "specification": "per kilogram",
+                        "date": LAGUNA_AGRICULTURAL_DATA['last_updated'],
+                        "location": "Laguna",
+                        "region": "Laguna",
+                        "category": category.replace('_', ' ').title(),
+                        "tagalog": item['tagalog'],
+                        "source": "laguna_agricultural_data",
+                        "content_type": "price_data"
+                    }
+                    price_entries.append(price_entry)
+                    
+                    # Create text chunk (bilingual)
+                    text_chunk = f"{item['name']} ({item['tagalog']}) sa Laguna: ₱{item['price_per_kg']:.2f} bawat kilo. " \
+                                f"{item['name']} in Laguna costs ₱{item['price_per_kg']:.2f} per kilogram. " \
+                                f"Presyo ng {item['tagalog']} sa Laguna ay ₱{item['price_per_kg']:.2f} kada kilo."
+                    text_chunks.append(text_chunk)
+            
+            logger.info(f"✓ Created {len(price_entries)} commodity entries")
+            
+            # Generate embeddings
+            logger.info("Generating embeddings...")
+            embeddings_list = self.embeddings.embed_documents(text_chunks)
+            logger.info(f"✓ Generated {len(embeddings_list)} embeddings")
+            
+            # Store in ChromaDB using the same method as PDF data
+            logger.info("Storing in ChromaDB...")
+            result = self.chromadb.add_prices(
+                price_data=price_entries,
+                embeddings=embeddings_list,
+                texts=text_chunks
+            )
+            
+            if result['success']:
+                logger.info(f"\n{'='*70}")
+                logger.info("✓ LAGUNA CONTEXT INGESTION COMPLETE")
+                logger.info(f"{'='*70}")
+                logger.info(f"Commodities stored: {len(price_entries)}")
+                logger.info(f"{'='*70}\n")
+                
+                return {
+                    "success": True,
+                    "count": len(price_entries),
+                    "source": "laguna_agricultural_data"
+                }
+            else:
+                return result
+            
+        except Exception as e:
+            logger.error(f"Laguna context ingestion failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": False,
+                "error": str(e)
+            }
     
     def ingest_pdf(self, pdf_path: Path, replace_if_exists: bool = False) -> Dict:
         """

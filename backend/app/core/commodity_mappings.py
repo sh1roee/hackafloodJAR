@@ -37,6 +37,67 @@ NCR_CITIES = {
     "national capital region": "NCR",
 }
 
+# Laguna Cities and Municipalities Mapping
+LAGUNA_CITIES = {
+    # Cities
+    "calamba": "Laguna",
+    "calamba city": "Laguna",
+    "san pablo": "Laguna",
+    "san pablo city": "Laguna",
+    "cabuyao": "Laguna",
+    "cabuyao city": "Laguna",
+    "biñan": "Laguna",
+    "binan": "Laguna",
+    "santa rosa": "Laguna",
+    "city of santa rosa": "Laguna",
+    "san pedro": "Laguna",
+    
+    # Municipalities
+    "bay": "Laguna",
+    "cavinti": "Laguna",
+    "pagsanjan": "Laguna",
+    "alaminos": "Laguna",
+    "lumban": "Laguna",
+    "majayjay": "Laguna",
+    "luisiana": "Laguna",
+    "calauan": "Laguna",
+    "famy": "Laguna",
+    "los baños": "Laguna",
+    "los banos": "Laguna",
+    "liliw": "Laguna",
+    "mabitac": "Laguna",
+    "siniloan": "Laguna",
+    "santa maria": "Laguna",
+    "paete": "Laguna",
+    "pangil": "Laguna",
+    "nagcarlan": "Laguna",
+    "santa cruz": "Laguna",
+    "pakil": "Laguna",
+    "kalayaan": "Laguna",
+    "pila": "Laguna",
+    "rizal": "Laguna",
+    "victoria": "Laguna",
+    "magdalena": "Laguna",
+    
+    # Barangays and areas
+    "canlubang": "Laguna",
+    "punta": "Laguna",
+    "kay-anlog": "Laguna",
+    "parian": "Laguna",
+    "turbina": "Laguna",
+    "malitlit": "Laguna",
+    "del remedio": "Laguna",
+    "santo angel": "Laguna",
+    "banilan": "Laguna",
+    "mamatid": "Laguna",
+    
+    # Province name
+    "laguna": "Laguna",
+}
+
+# Combined location mapping
+ALL_LOCATIONS = {**NCR_CITIES, **LAGUNA_CITIES}
+
 # Tagalog to English mapping
 TAGALOG_TO_ENGLISH = {
     # Vegetables
@@ -193,27 +254,23 @@ def extract_commodity_from_query(query: str) -> str:
 
 def extract_location_from_query(query: str) -> str:
     """
-    Extract location from query and map cities to their region (NCR)
+    Extract location from query and map cities to their region (NCR or Laguna)
     
     Args:
-        query: User query like "Magkano kamatis sa Pasig" or "rice price in Makati"
+        query: User query like "Magkano kamatis sa Pasig" or "rice price in Laguna"
         
     Returns:
-        Region name (e.g., "NCR") or original location if not a known city
+        Region name (e.g., "NCR" or "Laguna") or original location if not a known city
     """
     query_lower = query.lower()
     
-    # Check for NCR cities/municipalities
-    for city, region in NCR_CITIES.items():
+    # Check for all known locations (NCR + Laguna)
+    for location, region in ALL_LOCATIONS.items():
         # Use word boundaries to avoid partial matches
         import re
-        pattern = r'\b' + re.escape(city) + r'\b'
+        pattern = r'\b' + re.escape(location) + r'\b'
         if re.search(pattern, query_lower):
             return region
-    
-    # If no city match, check for direct region mention
-    if "ncr" in query_lower or "metro manila" in query_lower:
-        return "NCR"
     
     # Return empty string if no location found
     return ""

@@ -5,12 +5,17 @@ from dotenv import load_dotenv
 from datetime import datetime
 from typing import Optional
 import os
+import logging
 
 from data_sources.scraper import DAPriceScraper
 from core.scheduler import scheduler
 from data_sources.pdf_parser import PricePDFParser
 from processing.ingest_pipeline import IngestionPipeline
 from core.query_engine import QueryEngine
+from price_cache import PriceCache
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -49,6 +54,10 @@ query_engine = QueryEngine(
     chromadb_api_key=CHROMADB_API_KEY
 )
 
+# Initialize price cache (cost-efficient for simple queries)
+price_cache = PriceCache(chromadb_store=query_engine.chromadb)
+price_cache.refresh_cache()  # Load prices on startup
+
 
 # Request models
 class QueryRequest(BaseModel):
@@ -64,8 +73,9 @@ class SMSQueryRequest(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     """Start the scheduler when the app starts"""
-    # Configure scheduler with ingestion pipeline
+    # Configure scheduler with ingestion pipeline and price cache
     scheduler.set_ingestion_pipeline(ingestion_pipeline)
+    scheduler.set_price_cache(price_cache)
     
     # Schedule daily scraping + ingestion at 8:00 AM
     scheduler.start(hour=8, minute=0)
@@ -185,17 +195,35 @@ def trigger_ingestion(replace_if_exists: bool = False):
 
 
 @app.post("/api/query")
-def query_prices(request: QueryRequest):
+def query_prices(request: QueryRequest, use_cache: bool = True):
     """
-    Query price information using RAG + GPT-4o-mini
+    Query price information
     
-    Supports both Tagalog and English queries.
+    **Cost-Efficient Mode (default):**
+    - Uses in-memory cache lookup (FREE, no API calls)
+    - Instant responses (<50ms)
+    - Perfect for simple queries like "magkano kamatis"
+    
+    **RAG Mode (expensive, use_cache=false):**
+    - Uses embeddings + GPT-4o-mini (costs money)
+    - Slower responses (~2-3 seconds)
+    - Better for complex questions
+    
     Examples:
-    - "Magkano kamatis sa NCR?"
-    - "What is the price of tomatoes?"
-    - "Presyo ng manok"
+    - "Magkano kamatis sa NCR?" → Cache (free)
+    - "Presyo ng manok sa Pasig" → Cache (free)
+    - "What is cheaper, chicken or pork?" → RAG (expensive)
     """
     try:
+        # Try cache first (FAST & FREE) unless explicitly disabled
+        if use_cache:
+            cache_result = price_cache.query(request.question)
+            if cache_result['success']:
+                logger.info(f"💰 Cache hit! Saved API costs for: {request.question}")
+                return cache_result
+            logger.info(f"🔍 Cache miss, falling back to RAG for: {request.question}")
+        
+        # Fall back to expensive RAG + LLM
         result = query_engine.process_query(
             user_query=request.question,
             top_k=request.top_k,
@@ -205,6 +233,8 @@ def query_prices(request: QueryRequest):
         if not result['success']:
             raise HTTPException(status_code=400, detail=result.get('error', 'Query failed'))
         
+        result['method'] = 'rag'  # Mark as expensive method
+        result['cost'] = 'high'  # Indicate this used API calls
         return result
         
     except Exception as e:
@@ -263,6 +293,48 @@ def get_chromadb_stats():
     try:
         stats = ingestion_pipeline.get_chromadb_stats()
         return stats
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/cache/refresh")
+def refresh_cache_endpoint():
+    """
+    Manually refresh the price cache
+    
+    Useful after manual data ingestion or for testing
+    """
+    try:
+        logger.info("Manual cache refresh triggered")
+        price_cache.refresh_cache()
+        
+        cache_stats = {
+            "last_updated": price_cache.last_updated.isoformat() if price_cache.last_updated else None,
+            "cached_commodities": len(price_cache.cache),
+            "cache_duration_hours": price_cache.cache_duration.total_seconds() / 3600
+        }
+        
+        return {
+            "success": True,
+            "message": "Cache refreshed successfully",
+            "stats": cache_stats
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/cache/stats")
+def get_cache_stats():
+    """
+    Get cache statistics
+    """
+    try:
+        return {
+            "last_updated": price_cache.last_updated.isoformat() if price_cache.last_updated else None,
+            "cached_commodities": len(price_cache.cache),
+            "cache_duration_hours": price_cache.cache_duration.total_seconds() / 3600,
+            "needs_refresh": price_cache._needs_refresh()
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

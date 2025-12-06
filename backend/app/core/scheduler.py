@@ -21,16 +21,18 @@ logger = logging.getLogger(__name__)
 class PriceScheduler:
     """Manages scheduled scraping and ingestion of DA price index"""
     
-    def __init__(self, ingestion_pipeline=None):
+    def __init__(self, ingestion_pipeline=None, price_cache=None):
         """
         Initialize scheduler and scraper
         
         Args:
             ingestion_pipeline: Optional IngestionPipeline instance for automatic ingestion
+            price_cache: Optional PriceCache instance to refresh after ingestion
         """
         self.scheduler = BackgroundScheduler()
         self.scraper = DAPriceScraper()
         self.ingestion_pipeline = ingestion_pipeline
+        self.price_cache = price_cache
         self.last_run = None
         self.last_result = None
     
@@ -57,6 +59,13 @@ class PriceScheduler:
                         if ingest_result.get('success'):
                             logger.info(f"✓ Ingestion successful: {ingest_result.get('entries_stored')} entries")
                             self.last_result['ingestion'] = ingest_result
+                            
+                            # Step 3: Refresh price cache with new data
+                            if self.price_cache:
+                                logger.info("Refreshing price cache with new data...")
+                                self.price_cache.refresh_cache()
+                                logger.info("✓ Price cache updated with latest prices")
+                            
                         elif 'already exists' in ingest_result.get('error', ''):
                             logger.info(f"ℹ Data already exists for {ingest_result.get('date')}, skipping ingestion")
                             self.last_result['ingestion'] = {"skipped": True, "reason": "already exists"}
@@ -85,6 +94,16 @@ class PriceScheduler:
         """
         self.ingestion_pipeline = ingestion_pipeline
         logger.info("✓ Ingestion pipeline configured for automatic ingestion")
+    
+    def set_price_cache(self, price_cache):
+        """
+        Set the price cache for automatic refresh after ingestion
+        
+        Args:
+            price_cache: PriceCache instance
+        """
+        self.price_cache = price_cache
+        logger.info("✓ Price cache configured for automatic refresh")
     
     def start(self, hour=8, minute=0):
         """

@@ -9,7 +9,11 @@ import logging
 
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from chromadb_store import ChromaDBStore
-from core.commodity_mappings import translate_tagalog_to_english, extract_commodity_from_query
+from core.commodity_mappings import (
+    translate_tagalog_to_english, 
+    extract_commodity_from_query,
+    extract_location_from_query
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -66,14 +70,19 @@ class QueryEngine:
         try:
             logger.info(f"\nQuery: {user_query}")
             
-            # Step 1: Translate Tagalog to English
+            # Step 1: Extract location and map cities to region
+            location = extract_location_from_query(user_query)
+            if location:
+                logger.info(f"Detected location: {location}")
+            
+            # Step 2: Translate Tagalog to English
             translated_query = translate_tagalog_to_english(user_query)
             logger.info(f"Translated: {translated_query}")
             
-            # Step 2: Generate query embedding
+            # Step 3: Generate query embedding
             query_embedding = self.embeddings.embed_query(translated_query)
             
-            # Step 3: Search ChromaDB
+            # Step 4: Search ChromaDB
             search_results = self.chromadb.search_prices(query_embedding, n_results=top_k)
             
             if not search_results['success']:
@@ -173,12 +182,15 @@ DATOS NG PRESYO:
 TANONG NG USER: {user_query}
 
 INSTRUCTIONS:
-- Sagutin sa ganitong format: "Sa petsang [buwan at araw], ang presyo ng [produkto] ay ₱[presyo] [unit] sa [lokasyon]"
-- HALIMBAWA NG TAMANG SAGOT:
-  * Rice/kilo: "Sa petsang Disyembre 5, ang presyo ng bigas ay ₱211.00 bawat kilo sa NCR"
-  * Egg/piece: "Sa petsang Disyembre 5, ang presyo ng itlog ay ₱8.25 bawat piraso sa NCR"
-  * Bundle: "Sa petsang Disyembre 5, ang presyo ng talong ay ₱202.29 bawat tali sa NCR"
-  * Bottle: "Sa petsang Disyembre 5, ang presyo ng mantika ay ₱90.60 bawat bote sa NCR"
+- Ang lahat ng datos ay para sa NCR (National Capital Region / Metro Manila)
+- Ang NCR ay may 17 local government units: Caloocan, Las Piñas, Makati, Malabon, Mandaluyong, Manila, Marikina, Muntinlupa, Navotas, Parañaque, Pasay, Pasig, Pateros, Quezon City, San Juan, Taguig, Valenzuela
+- Kung nagtanong tungkol sa specific city (halimbawa: Pasig, Makati, Quezon City), GAMITIN pa rin "NCR" sa sagot dahil ang datos ay pangrehiyon
+- HALIMBAWA:
+  * "Magkano bigas sa Pasig?" → "Sa petsang Disyembre 5, ang presyo ng bigas ay ₱211.00 bawat kilo sa NCR"
+  * "Kamatis sa Makati" → "Sa petsang Disyembre 5, ang presyo ng kamatis ay ₱142.54 bawat kilo sa NCR"
+  * "Rice in Quezon City" → "Sa petsang Disyembre 5, ang presyo ng bigas ay ₱211.00 bawat kilo sa NCR"
+
+- FORMAT NG SAGOT: "Sa petsang [buwan at araw], ang presyo ng [produkto] ay ₱[presyo] [unit] sa NCR"
 
 - UNIT TRANSLATION (lahat Tagalog):
   * "/kg" o "pcs/kg" o "per kilogram" = "bawat kilo"

@@ -3,6 +3,40 @@ Commodity name mappings between Tagalog and English
 For handling queries in both languages
 """
 
+# NCR Cities and Municipality Mapping
+# Maps city/municipality names to their region (NCR)
+NCR_CITIES = {
+    # 16 Cities (Highly Urbanized Cities)
+    "caloocan": "NCR",
+    "las piñas": "NCR",
+    "las pinas": "NCR",
+    "makati": "NCR",
+    "malabon": "NCR",
+    "mandaluyong": "NCR",
+    "manila": "NCR",
+    "maynila": "NCR",
+    "marikina": "NCR",
+    "muntinlupa": "NCR",
+    "navotas": "NCR",
+    "parañaque": "NCR",
+    "paranaque": "NCR",
+    "pasay": "NCR",
+    "pasig": "NCR",
+    "quezon city": "NCR",
+    "qc": "NCR",
+    "san juan": "NCR",
+    "taguig": "NCR",
+    "valenzuela": "NCR",
+    
+    # 1 Municipality
+    "pateros": "NCR",
+    
+    # Common aliases
+    "metro manila": "NCR",
+    "ncr": "NCR",
+    "national capital region": "NCR",
+}
+
 # Tagalog to English mapping
 TAGALOG_TO_ENGLISH = {
     # Vegetables
@@ -154,4 +188,32 @@ def extract_commodity_from_query(query: str) -> str:
         if english in query_lower:
             return english
     
+    return ""
+
+
+def extract_location_from_query(query: str) -> str:
+    """
+    Extract location from query and map cities to their region (NCR)
+    
+    Args:
+        query: User query like "Magkano kamatis sa Pasig" or "rice price in Makati"
+        
+    Returns:
+        Region name (e.g., "NCR") or original location if not a known city
+    """
+    query_lower = query.lower()
+    
+    # Check for NCR cities/municipalities
+    for city, region in NCR_CITIES.items():
+        # Use word boundaries to avoid partial matches
+        import re
+        pattern = r'\b' + re.escape(city) + r'\b'
+        if re.search(pattern, query_lower):
+            return region
+    
+    # If no city match, check for direct region mention
+    if "ncr" in query_lower or "metro manila" in query_lower:
+        return "NCR"
+    
+    # Return empty string if no location found
     return ""

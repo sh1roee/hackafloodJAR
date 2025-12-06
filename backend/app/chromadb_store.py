@@ -186,11 +186,15 @@ class ChromaDBStore:
             Search results with documents, metadatas, and distances
         """
         try:
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=n_results,
-                where=filter_dict if filter_dict else None
-            )
+            # Build query kwargs without passing where=None (Chroma raises error)
+            query_kwargs = {
+                "query_embeddings": [query_embedding],
+                "n_results": n_results,
+            }
+            if filter_dict:
+                query_kwargs["where"] = filter_dict
+
+            results = self.collection.query(**query_kwargs)
             
             return {
                 "success": True,

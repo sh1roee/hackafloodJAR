@@ -91,13 +91,9 @@ class QueryEngine:
                     logger.info(f"Applying Laguna filter: {filter_dict}")
                 elif location == "NCR":
                     # Filter for NCR data (exclude Laguna)
-                    filter_dict = {
-                        "$or": [
-                            {"location": {"$ne": "Laguna"}},
-                            {"location": None}
-                        ]
-                    }
-                    logger.info(f"Applying NCR filter")
+                    # Just use $ne without None (ChromaDB doesn't accept None values)
+                    filter_dict = {"location": {"$ne": "Laguna"}}
+                    logger.info(f"Applying NCR filter: {filter_dict}")
             
             # Step 5: Search ChromaDB with location filter
             search_results = self.chromadb.search_prices(

@@ -8,9 +8,9 @@ from typing import Dict, List
 from pathlib import Path
 import logging
 
-from pdf_parser import PricePDFParser
-from data_processor import PriceDataProcessor
-from text_chunks import TextChunkGenerator
+from data_sources.pdf_parser import PricePDFParser
+from processing.data_processor import PriceDataProcessor
+from processing.text_chunks import TextChunkGenerator
 from chromadb_store import ChromaDBStore
 from langchain_openai import OpenAIEmbeddings
 

@@ -20,11 +20,14 @@ print("="*80)
 # Test 1: Import all modules
 print("\nTest 1: Importing modules...")
 try:
-    from ingest_pipeline import IngestionPipeline
-    from query_engine import QueryEngine
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from processing.ingest_pipeline import IngestionPipeline
+    from core.query_engine import QueryEngine
     print("✓ All modules imported successfully")
 except Exception as e:
     print(f"✗ Import failed: {e}")
+    import traceback
+    traceback.print_exc()
     sys.exit(1)
 
 # Test 2: Initialize ingestion pipeline

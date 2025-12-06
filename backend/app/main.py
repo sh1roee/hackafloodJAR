@@ -6,11 +6,11 @@ from datetime import datetime
 from typing import Optional
 import os
 
-from scraper import DAPriceScraper
-from scheduler import scheduler
-from pdf_parser import PricePDFParser
-from ingest_pipeline import IngestionPipeline
-from query_engine import QueryEngine
+from data_sources.scraper import DAPriceScraper
+from core.scheduler import scheduler
+from data_sources.pdf_parser import PricePDFParser
+from processing.ingest_pipeline import IngestionPipeline
+from core.query_engine import QueryEngine
 
 # Load environment variables
 load_dotenv()

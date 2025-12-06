@@ -9,7 +9,7 @@ import logging
 
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from chromadb_store import ChromaDBStore
-from commodity_mappings import translate_tagalog_to_english, extract_commodity_from_query
+from core.commodity_mappings import translate_tagalog_to_english, extract_commodity_from_query
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

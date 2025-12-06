@@ -4,7 +4,7 @@ Creates natural language descriptions of price data
 """
 
 from typing import Dict, List
-from commodity_mappings import ENGLISH_TO_TAGALOG
+from core.commodity_mappings import ENGLISH_TO_TAGALOG
 
 
 class TextChunkGenerator:

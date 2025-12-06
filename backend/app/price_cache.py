@@ -172,17 +172,21 @@ class PriceCache:
         elif "liter" in spec_lower:
             unit = "bawat litro"
         
-        # Format date
+        # Format date consistently (always show explicit date)
+        month_tagalog = {
+            1: "Enero", 2: "Pebrero", 3: "Marso", 4: "Abril",
+            5: "Mayo", 6: "Hunyo", 7: "Hulyo", 8: "Agosto",
+            9: "Setyembre", 10: "Oktubre", 11: "Nobyembre", 12: "Disyembre"
+        }
+        date_obj = None
         try:
-            date_obj = datetime.fromisoformat(date_str)
-            month_tagalog = {
-                1: "Enero", 2: "Pebrero", 3: "Marso", 4: "Abril",
-                5: "Mayo", 6: "Hunyo", 7: "Hulyo", 8: "Agosto",
-                9: "Setyembre", 10: "Oktubre", 11: "Nobyembre", 12: "Disyembre"
-            }
-            date_formatted = f"{month_tagalog[date_obj.month]} {date_obj.day}"
-        except:
-            date_formatted = "ngayong araw"
+            if date_str:
+                date_obj = datetime.fromisoformat(date_str)
+        except Exception:
+            date_obj = None
+        if not date_obj:
+            date_obj = datetime.now()
+        date_formatted = f"{month_tagalog[date_obj.month]} {date_obj.day}, {date_obj.year}"
         
         # Build response
         # Respect location from the price data (Laguna, NCR, etc.)

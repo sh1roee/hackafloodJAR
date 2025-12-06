@@ -336,17 +336,14 @@ class AdvancedQueryHandler:
         
         from core.commodity_mappings import ENGLISH_TO_TAGALOG
         
-        response = f"**Presyo ng {category_tagalog.get(detected_category, detected_category)} sa NCR:**\n\n"
-        
+        # Concise listing: date, name, cost (no repetition)
+        date_override = "December 6 2025"
+        response = ""
         for idx, item in enumerate(category_items, 1):
             commodity = item.get('commodity', '')
             price = item.get('price', 0)
-            spec = item.get('specification', '')
-            
             name = ENGLISH_TO_TAGALOG.get(commodity.lower(), commodity)
-            unit = self._detect_unit(spec)
-            
-            response += f"{idx}. {name}: ₱{price:.2f} {unit}\n"
+            response += f"{date_override}, {name}, ₱{price:.2f}\n"
         
         return {
             "success": True,
@@ -456,19 +453,13 @@ class AdvancedQueryHandler:
             
             cheapest_name = ENGLISH_TO_TAGALOG.get(cheapest['commodity'].lower(), cheapest['commodity'])
             
-            response = f"**🏆 Pinakamura sa {category_name}:**\n\n"
-            response += f"**{cheapest_name}** - ₱{cheapest['price']:.2f} {self._detect_unit(cheapest.get('specification', ''))}\n"
-            response += f"({cheapest.get('specification', '')})\n\n"
-            
-            if len(top_items) > 1:
-                response += f"**Top 5 Pinakamura:**\n"
-                for idx, item in enumerate(top_items, 1):
-                    name = ENGLISH_TO_TAGALOG.get(item['commodity'].lower(), item['commodity'])
-                    unit = self._detect_unit(item.get('specification', ''))
-                    spec = item.get('specification', '')
-                    response += f"{idx}. {name} - ₱{item['price']:.2f} {unit}\n"
-                    if spec:
-                        response += f"   ({spec})\n"
+            # Concise listing: date, name, cost (no repetition)
+            date_override = "December 6 2025"
+            lines = []
+            for item in top_items:
+                name = ENGLISH_TO_TAGALOG.get(item['commodity'].lower(), item['commodity'])
+                lines.append(f"{date_override}, {name}, ₱{item['price']:.2f}")
+            response = "\n".join(lines)
             
             return {
                 "success": True,
@@ -486,19 +477,13 @@ class AdvancedQueryHandler:
             
             expensive_name = ENGLISH_TO_TAGALOG.get(most_expensive['commodity'].lower(), most_expensive['commodity'])
             
-            response = f"**🏆 Pinakamahal sa {category_name}:**\n\n"
-            response += f"**{expensive_name}** - ₱{most_expensive['price']:.2f} {self._detect_unit(most_expensive.get('specification', ''))}\n"
-            response += f"({most_expensive.get('specification', '')})\n\n"
-            
-            if len(top_items) > 1:
-                response += f"**Top 5 Pinakamahal:**\n"
-                for idx, item in enumerate(top_items, 1):
-                    name = ENGLISH_TO_TAGALOG.get(item['commodity'].lower(), item['commodity'])
-                    unit = self._detect_unit(item.get('specification', ''))
-                    spec = item.get('specification', '')
-                    response += f"{idx}. {name} - ₱{item['price']:.2f} {unit}\n"
-                    if spec:
-                        response += f"   ({spec})\n"
+            # Concise listing: date, name, cost (no repetition)
+            date_override = "December 6 2025"
+            lines = []
+            for item in top_items:
+                name = ENGLISH_TO_TAGALOG.get(item['commodity'].lower(), item['commodity'])
+                lines.append(f"{date_override}, {name}, ₱{item['price']:.2f}")
+            response = "\n".join(lines)
             
             return {
                 "success": True,

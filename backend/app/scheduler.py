@@ -8,7 +8,7 @@ from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime
 import logging
 
-from scraper import DAPriceScraper
+from app.scraper import DAPriceScraper
 
 # Configure logging
 logging.basicConfig(

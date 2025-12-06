@@ -4,9 +4,9 @@ from dotenv import load_dotenv
 from datetime import datetime
 import os
 
-from scraper import DAPriceScraper
-from scheduler import scheduler
-from pdf_parser import PricePDFParser
+from app.scraper import DAPriceScraper
+from app.scheduler import scheduler
+from app.pdf_parser import PricePDFParser
 
 # Load environment variables
 load_dotenv()

@@ -164,7 +164,7 @@ class QueryEngine:
         
         context = "\n".join(context_parts)
         
-        # Create prompt - Tagalog only format
+        # Create prompt - Complete Tagalog translation
         prompt = f"""Ikaw ay isang helpful assistant para sa mga magsasaka at mamimili sa Pilipinas. Nagbibigay ka ng impormasyon tungkol sa presyo ng mga produkto mula sa Department of Agriculture para sa NCR.
 
 DATOS NG PRESYO:
@@ -173,12 +173,66 @@ DATOS NG PRESYO:
 TANONG NG USER: {user_query}
 
 INSTRUCTIONS:
-- Sagutin sa ganitong format lamang: "Sa petsang [buwan at araw], ang presyo ng [produkto] ay ₱[presyo] sa NCR"
-- Halimbawa: "Sa petsang Disyembre 5, ang presyo ng kamatis ay ₱142.54 sa NCR"
-- Kung may specification, idagdag: "Sa petsang Disyembre 5, ang presyo ng kamatis (15-18 pcs/kg) ay ₱142.54 sa NCR"
-- Tagalog lang dapat ang sagot
-- Maikli at tumpak lang
-- Laging ilagay ang peso symbol (₱)
+- Sagutin sa ganitong format: "Sa petsang [buwan at araw], ang presyo ng [produkto] ay ₱[presyo] [unit] sa [lokasyon]"
+- HALIMBAWA NG TAMANG SAGOT:
+  * Rice/kilo: "Sa petsang Disyembre 5, ang presyo ng bigas ay ₱211.00 bawat kilo sa NCR"
+  * Egg/piece: "Sa petsang Disyembre 5, ang presyo ng itlog ay ₱8.25 bawat piraso sa NCR"
+  * Bundle: "Sa petsang Disyembre 5, ang presyo ng talong ay ₱202.29 bawat tali sa NCR"
+  * Bottle: "Sa petsang Disyembre 5, ang presyo ng mantika ay ₱90.60 bawat bote sa NCR"
+
+- UNIT TRANSLATION (lahat Tagalog):
+  * "/kg" o "pcs/kg" o "per kilogram" = "bawat kilo"
+  * "/pc" o "per piece" o "grams/pc" = "bawat piraso"
+  * "bundles" o "bundle" = "bawat tali"
+  * "/bottle" o "ml/bottle" = "bawat bote"
+  * "/liter" o "ml" = "bawat litro"
+  * "/head" o "head" = "bawat ulo"
+  * "pcs" = "piraso"
+  * "kg" = "kilo"
+  * "medium" = "katamtaman"
+  * "large" = "malaki"
+  * "small" = "maliit"
+  * Kung walang specific unit, gamitin "bawat kilo"
+
+- COMMODITY TRANSLATION (gawing Tagalog):
+  * rice = bigas
+  * tomato = kamatis
+  * chicken = manok
+  * pork = baboy
+  * beef = baka
+  * egg = itlog
+  * eggplant = talong
+  * fish = isda
+  * cooking oil = mantika
+  * onion = sibuyas
+  * garlic = bawang
+  * ginger = luya
+  * corn = mais
+  * salt = asin
+  * sugar = asukal
+  * cabbage = repolyo
+  * carrot = karot
+  * potato = patatas
+  * banana = saging
+  * mango = mangga
+  * watermelon = pakwan
+  * papaya = papaya
+  * avocado = abukado
+  * chili = sili
+  * squash = kalabasa
+
+- LAHAT NG SALITA SA TAGALOG:
+  * "local" = "lokal"
+  * "imported" = "imported" (pwedeng "angkat")
+  * "fresh" = "sariwa"
+  * "frozen" = "nagyelo"
+  * "whole" = "buo"
+  * "per" = "bawat"
+
+- Tagalog lang ang sagot
+- Maikli at tumpak
+- Laging may peso symbol (₱)
+- Isama ang specification kung meron pero i-translate sa Tagalog
 
 SAGOT MO:"""
         

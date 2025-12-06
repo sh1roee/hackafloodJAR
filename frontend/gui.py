@@ -46,13 +46,16 @@ st.markdown("""
 # Initialize session state
 if 'messages' not in st.session_state:
     st.session_state.messages = []
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": "Kumusta! Anong pananim o produkto ang gusto mong itanong ang presyo?"
-    })
     st.session_state.waiting_for = "crop"  # or "location" or None
     st.session_state.crop = None
     st.session_state.location = None
+
+# Helper function to detect if location is mentioned
+def has_location(text: str) -> bool:
+    """Check if location is mentioned in the text"""
+    locations = ['ncr', 'metro manila', 'manila', 'maynila', 'quezon city', 'makati', 'pasig', 'mandaluyong']
+    text_lower = text.lower()
+    return any(loc in text_lower for loc in locations)
 
 # Helper function to call backend API
 def query_backend(user_message: str):
@@ -96,11 +99,21 @@ if prompt := st.chat_input("Mag-type dito..."):
     # Get assistant response based on conversation state
     with st.chat_message("assistant"):
         if st.session_state.waiting_for == "crop":
-            # User provided crop
-            st.session_state.crop = prompt
-            st.session_state.waiting_for = "location"
-            response = "Saan ang lokasyon? (Halimbawa: NCR, Metro Manila)"
-            st.markdown(response)
+            # Check if user provided both crop AND location in one message
+            if has_location(prompt):
+                # User provided both - query directly
+                with st.spinner("Searching..."):
+                    response = query_backend(f"Magkano ang {prompt}")
+                    st.markdown(response)
+                
+                # Reset for next query
+                st.session_state.waiting_for = "crop"
+            else:
+                # User only provided crop
+                st.session_state.crop = prompt
+                st.session_state.waiting_for = "location"
+                response = "Saan ang lokasyon? (Halimbawa: NCR, Metro Manila)"
+                st.markdown(response)
         elif st.session_state.waiting_for == "location":
             # User provided location
             st.session_state.location = prompt

@@ -84,6 +84,31 @@ def query_backend(user_message: str):
 st.title("🌾 DA Price Monitor")
 st.caption("Ask about commodity prices in NCR")
 
+# Show example queries
+with st.expander("💡 Mga Halimbawa ng Tanong"):
+    st.markdown("""
+    **Single Product:**
+    - Magkano kamatis sa NCR?
+    - Presyo ng bigas
+    
+    **Multi-Product:** ✨
+    - Magkano kamatis, sibuyas, at bawang?
+    - Presyo ng manok, baboy, at baka
+    
+    **Comparison:** ✨
+    - Ano mas mura, manok o baboy?
+    - Alin ang mas mahal, lokal o imported na bigas?
+    
+    **Budget Planning:** ✨
+    - Ano pwede bilhin ng 500 pesos?
+    - Ano makakuha ko sa 200 pesos?
+    
+    **Category Browsing:** ✨
+    - Presyo ng lahat ng gulay
+    - Lahat ng isda
+    - Mga prutas
+    """)
+
 # Display chat messages
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):

@@ -13,6 +13,7 @@ from data_sources.pdf_parser import PricePDFParser
 from processing.ingest_pipeline import IngestionPipeline
 from core.query_engine import QueryEngine
 from price_cache import PriceCache
+from advanced_query import AdvancedQueryHandler
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -57,6 +58,9 @@ query_engine = QueryEngine(
 # Initialize price cache (cost-efficient for simple queries)
 price_cache = PriceCache(chromadb_store=query_engine.chromadb)
 price_cache.refresh_cache()  # Load prices on startup
+
+# Initialize advanced query handler (multi-product, comparison, budget, category)
+advanced_query = AdvancedQueryHandler(price_cache=price_cache)
 
 
 # Request models
@@ -197,31 +201,43 @@ def trigger_ingestion(replace_if_exists: bool = False):
 @app.post("/api/query")
 def query_prices(request: QueryRequest, use_cache: bool = True):
     """
-    Query price information
+    Query price information with ADVANCED features
     
-    **Cost-Efficient Mode (default):**
-    - Uses in-memory cache lookup (FREE, no API calls)
-    - Instant responses (<50ms)
-    - Perfect for simple queries like "magkano kamatis"
+    **Supported Query Types:**
     
-    **RAG Mode (expensive, use_cache=false):**
-    - Uses embeddings + GPT-4o-mini (costs money)
-    - Slower responses (~2-3 seconds)
-    - Better for complex questions
+    1. **Single Product** (FREE, instant)
+       - "Magkano kamatis sa NCR?"
+       - "Price of tomato"
     
-    Examples:
-    - "Magkano kamatis sa NCR?" → Cache (free)
-    - "Presyo ng manok sa Pasig" → Cache (free)
-    - "What is cheaper, chicken or pork?" → RAG (expensive)
+    2. **Multi-Product** (FREE, instant) ✨ NEW!
+       - "Magkano kamatis, sibuyas, at bawang?"
+       - "Price of tomato, onion, and garlic"
+    
+    3. **Comparison** (FREE, instant) ✨ NEW!
+       - "Ano mas mura, manok o baboy?"
+       - "Compare chicken and pork prices"
+    
+    4. **Budget Planning** (FREE, instant) ✨ NEW!
+       - "Ano pwede bilhin ng 500 pesos?"
+       - "What can I buy with 500 pesos?"
+    
+    5. **Category Browsing** (FREE, instant) ✨ NEW!
+       - "Presyo ng lahat ng gulay"
+       - "Show all vegetable prices"
+       - "Lahat ng isda"
+    
+    **Performance:**
+    - Cache mode (default): <50ms, ₱0 cost
+    - RAG mode (use_cache=false): 2-3s, costs API calls
     """
     try:
-        # Try cache first (FAST & FREE) unless explicitly disabled
+        # Try advanced query handler first (handles multi, comparison, budget, category)
         if use_cache:
-            cache_result = price_cache.query(request.question)
-            if cache_result['success']:
-                logger.info(f"💰 Cache hit! Saved API costs for: {request.question}")
-                return cache_result
-            logger.info(f"🔍 Cache miss, falling back to RAG for: {request.question}")
+            advanced_result = advanced_query.process(request.question)
+            if advanced_result['success']:
+                logger.info(f"💡 Advanced query handled: {advanced_result.get('method', 'cache')}")
+                return advanced_result
+            logger.info(f"🔍 Advanced query failed, falling back to RAG...")
         
         # Fall back to expensive RAG + LLM
         result = query_engine.process_query(

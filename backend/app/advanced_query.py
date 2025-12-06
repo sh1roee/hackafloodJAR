@@ -37,9 +37,13 @@ class AdvancedQueryHandler:
         """
         Detect what type of query this is
         
-        Returns: 'multi', 'comparison', 'budget', 'category', or 'single'
+        Returns: 'multi', 'comparison', 'budget', 'category', 'cheapest', or 'single'
         """
         query_lower = query.lower()
+        
+        # Cheapest/Most expensive query (pinakamura, pinakamahal, cheapest, most expensive)
+        if any(word in query_lower for word in ['pinakamura', 'pinakamahal', 'cheapest', 'most expensive', 'least expensive']):
+            return 'cheapest'
         
         # Comparison (has "mas mura", "mas mahal", "compare", or "o" between products)
         if any(word in query_lower for word in ['mas mura', 'mas mahal', 'compare', 'alin', 'sino']):
@@ -369,13 +373,188 @@ class AdvancedQueryHandler:
         else:
             return "bawat kilo"
     
+    def handle_cheapest(self, query: str) -> Dict:
+        """
+        Handle "cheapest" queries like "pinakamurang bigas" or "pinakamahal na gulay"
+        
+        Returns the cheapest or most expensive item in a category
+        """
+        query_lower = query.lower()
+        
+        # Determine if looking for cheapest or most expensive
+        is_cheapest = any(w in query_lower for w in ['pinakamura', 'cheapest', 'least expensive'])
+        is_expensive = any(w in query_lower for w in ['pinakamahal', 'most expensive'])
+        
+        # Detect category
+        detected_category = None
+        for tag_category, eng_keywords in self.category_keywords.items():
+            if tag_category in query_lower or any(kw in query_lower for kw in eng_keywords):
+                detected_category = tag_category
+                break
+        
+        # If no category detected, search all items
+        if not detected_category:
+            detected_category = 'lahat'
+        
+        # Get all items in category
+        category_items = []
+        
+        for commodity_key, prices in self.price_cache.cache.items():
+            for price_data in prices:
+                category = price_data.get('category', '').lower()
+                commodity_name = price_data.get('commodity', '').lower()
+                
+                # Match category or commodity name
+                include = False
+                
+                if detected_category == 'lahat':
+                    include = True
+                elif detected_category == 'gulay' and 'vegetable' in category:
+                    include = True
+                elif detected_category == 'karne' and any(m in category for m in ['beef', 'pork', 'chicken', 'meat']):
+                    include = True
+                elif detected_category == 'isda' and 'fish' in category:
+                    include = True
+                elif detected_category == 'prutas' and 'fruit' in category:
+                    include = True
+                elif detected_category == 'bigas' and ('rice' in category or 'rice' in commodity_name):
+                    include = True
+                elif detected_category == 'pampalasa' and 'spice' in category:
+                    include = True
+                
+                if include and price_data.get('price', 0) > 0:
+                    category_items.append(price_data)
+        
+        if not category_items:
+            return {
+                "success": False,
+                "answer": f"Walang nakitang produkto sa kategoryang '{detected_category}'."
+            }
+        
+        # Sort by price
+        category_items.sort(key=lambda x: x.get('price', 0))
+        
+        # Translate category name
+        category_tagalog = {
+            'gulay': 'Gulay',
+            'karne': 'Karne',
+            'isda': 'Isda',
+            'prutas': 'Prutas',
+            'bigas': 'Bigas',
+            'pampalasa': 'Pampalasa',
+            'lahat': 'Lahat'
+        }
+        
+        from core.commodity_mappings import ENGLISH_TO_TAGALOG
+        
+        category_name = category_tagalog.get(detected_category, detected_category)
+        
+        if is_cheapest:
+            # Show cheapest items (first 5)
+            top_items = category_items[:5]
+            cheapest = top_items[0]
+            
+            cheapest_name = ENGLISH_TO_TAGALOG.get(cheapest['commodity'].lower(), cheapest['commodity'])
+            
+            response = f"**🏆 Pinakamura sa {category_name}:**\n\n"
+            response += f"**{cheapest_name}** - ₱{cheapest['price']:.2f} {self._detect_unit(cheapest.get('specification', ''))}\n"
+            response += f"({cheapest.get('specification', '')})\n\n"
+            
+            if len(top_items) > 1:
+                response += f"**Top 5 Pinakamura:**\n"
+                for idx, item in enumerate(top_items, 1):
+                    name = ENGLISH_TO_TAGALOG.get(item['commodity'].lower(), item['commodity'])
+                    unit = self._detect_unit(item.get('specification', ''))
+                    spec = item.get('specification', '')
+                    response += f"{idx}. {name} - ₱{item['price']:.2f} {unit}\n"
+                    if spec:
+                        response += f"   ({spec})\n"
+            
+            return {
+                "success": True,
+                "answer": response,
+                "method": "cheapest",
+                "category": detected_category,
+                "cheapest": cheapest,
+                "items_shown": len(top_items)
+            }
+        
+        elif is_expensive:
+            # Show most expensive items (last 5)
+            top_items = category_items[-5:][::-1]  # Reverse to show highest first
+            most_expensive = top_items[0]
+            
+            expensive_name = ENGLISH_TO_TAGALOG.get(most_expensive['commodity'].lower(), most_expensive['commodity'])
+            
+            response = f"**🏆 Pinakamahal sa {category_name}:**\n\n"
+            response += f"**{expensive_name}** - ₱{most_expensive['price']:.2f} {self._detect_unit(most_expensive.get('specification', ''))}\n"
+            response += f"({most_expensive.get('specification', '')})\n\n"
+            
+            if len(top_items) > 1:
+                response += f"**Top 5 Pinakamahal:**\n"
+                for idx, item in enumerate(top_items, 1):
+                    name = ENGLISH_TO_TAGALOG.get(item['commodity'].lower(), item['commodity'])
+                    unit = self._detect_unit(item.get('specification', ''))
+                    spec = item.get('specification', '')
+                    response += f"{idx}. {name} - ₱{item['price']:.2f} {unit}\n"
+                    if spec:
+                        response += f"   ({spec})\n"
+            
+            return {
+                "success": True,
+                "answer": response,
+                "method": "most_expensive",
+                "category": detected_category,
+                "most_expensive": most_expensive,
+                "items_shown": len(top_items)
+            }
+        
+        # Default: show both cheapest and most expensive
+        cheapest = category_items[0]
+        most_expensive = category_items[-1]
+        
+        cheapest_name = ENGLISH_TO_TAGALOG.get(cheapest['commodity'].lower(), cheapest['commodity'])
+        expensive_name = ENGLISH_TO_TAGALOG.get(most_expensive['commodity'].lower(), most_expensive['commodity'])
+        
+        response = f"**{category_name} Price Range:**\n\n"
+        response += f"**Pinakamura:** {cheapest_name} - ₱{cheapest['price']:.2f} {self._detect_unit(cheapest.get('specification', ''))}\n"
+        response += f"**Pinakamahal:** {expensive_name} - ₱{most_expensive['price']:.2f} {self._detect_unit(most_expensive.get('specification', ''))}\n"
+        
+        return {
+            "success": True,
+            "answer": response,
+            "method": "price_range",
+            "category": detected_category,
+            "cheapest": cheapest,
+            "most_expensive": most_expensive
+        }
+    
+    def _detect_unit(self, specification: str) -> str:
+        """Detect unit from specification"""
+        spec_lower = specification.lower()
+        
+        if "piece" in spec_lower or "/pc" in spec_lower:
+            return "bawat piraso"
+        elif "bundle" in spec_lower:
+            return "bawat tali"
+        elif "bottle" in spec_lower:
+            return "bawat bote"
+        elif "head" in spec_lower:
+            return "bawat ulo"
+        elif "liter" in spec_lower:
+            return "bawat litro"
+        else:
+            return "bawat kilo"
+    
     def process(self, query: str) -> Dict:
         """
         Main entry point - detect query type and route to handler
         """
         query_type = self.detect_query_type(query)
         
-        if query_type == 'multi':
+        if query_type == 'cheapest':
+            return self.handle_cheapest(query)
+        elif query_type == 'multi':
             return self.handle_multi_product(query)
         elif query_type == 'comparison':
             return self.handle_comparison(query)
@@ -386,3 +565,4 @@ class AdvancedQueryHandler:
         else:
             # Fall back to simple lookup
             return self.price_cache.query(query)
+

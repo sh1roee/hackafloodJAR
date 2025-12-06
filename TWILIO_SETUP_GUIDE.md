@@ -37,6 +37,7 @@ This guide shows you how to set up **virtual SMS testing** using Twilio. Unlike 
 ## Step 3: Get Your Credentials
 
 1. From Twilio Console, find:
+
    - **Account SID** (e.g., `ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`)
    - **Auth Token** (click to reveal)
    - **Phone Number** (e.g., `+12345678900`)
@@ -75,6 +76,7 @@ pip install twilio
 ```
 
 Or add to `requirements.txt`:
+
 ```
 twilio>=8.10.0
 ```
@@ -92,6 +94,7 @@ cd D:\JUNIOR\hackafloodJAR
 ```
 
 You'll see:
+
 ```
 Forwarding   https://abc123.ngrok.io -> http://localhost:8000
 ```
@@ -121,6 +124,7 @@ uvicorn app.main:app --reload
 ```
 
 Make sure you see:
+
 ```
 ✅ Twilio SMS Handler initialized
 📱 Sending from: +12345678900
@@ -139,6 +143,7 @@ Make sure you see:
 5. Click **Make Request**
 
 You should:
+
 - See the webhook hit your server (check backend logs)
 - Receive an SMS with the price response!
 
@@ -169,7 +174,7 @@ curl -X POST "http://localhost:8000/api/sms/twilio/test" \
 ✅ ngrok running and URL copied  
 ✅ Twilio webhook configured  
 ✅ Backend server running  
-✅ Test SMS sent successfully  
+✅ Test SMS sent successfully
 
 ---
 
@@ -189,25 +194,30 @@ curl -X POST "http://localhost:8000/api/sms/twilio/test" \
 ## Troubleshooting
 
 ### "Twilio not configured" error
+
 - Check `.env` file has correct credentials
 - Restart backend server after adding credentials
 
 ### "Import twilio could not be resolved"
+
 ```bash
 pip install twilio
 ```
 
 ### Not receiving SMS
+
 - Check ngrok is still running (it times out after 2 hours on free plan)
 - Verify webhook URL in Twilio console is correct
 - Check backend logs for errors
 
 ### "To number not verified" error
+
 - You're on trial account
 - Go to Twilio Console → Verified Caller IDs
 - Add and verify the recipient's phone number
 
 ### ngrok URL changed
+
 - ngrok URL changes every time you restart it
 - Update webhook URL in Twilio console with new URL
 - Or upgrade to ngrok paid plan for static URL
@@ -217,17 +227,21 @@ pip install twilio
 ## Cost Breakdown
 
 ### Twilio Trial (FREE)
+
 - **$15 credit** on signup
 - Each SMS costs **$0.0079** (outbound to Philippines)
 - That's **~1,900 messages** for free!
 
 ### After Trial
+
 - **Pay-as-you-go**: $0.0079 per SMS
 - No monthly fees
 - 1000 messages = ~$8
 
 ### Upgrading
+
 To send to unverified numbers (production):
+
 1. Upgrade Twilio account (add payment method)
 2. No verification needed for recipients
 3. Same pricing: $0.0079/SMS
@@ -236,14 +250,14 @@ To send to unverified numbers (production):
 
 ## Advanced: Twilio vs EngageSpark
 
-| Feature | Twilio | EngageSpark |
-|---------|--------|-------------|
-| Free Trial | $15 credit | Limited |
-| Web Console | ✅ Yes | ❌ No |
-| SMS Cost | $0.0079/SMS | Varies |
-| Setup Time | 10 minutes | 30+ minutes |
-| Philippine Numbers | ✅ Yes | ✅ Yes |
-| Testing | Very Easy | Complex |
+| Feature            | Twilio      | EngageSpark |
+| ------------------ | ----------- | ----------- |
+| Free Trial         | $15 credit  | Limited     |
+| Web Console        | ✅ Yes      | ❌ No       |
+| SMS Cost           | $0.0079/SMS | Varies      |
+| Setup Time         | 10 minutes  | 30+ minutes |
+| Philippine Numbers | ✅ Yes      | ✅ Yes      |
+| Testing            | Very Easy   | Complex     |
 
 **Recommendation**: Use Twilio for development/testing, consider EngageSpark for production if cheaper.
 
@@ -262,6 +276,7 @@ To send to unverified numbers (production):
 ## Quick Reference
 
 **Your Backend Endpoints:**
+
 - Webhook: `/api/sms/twilio/webhook` (Twilio calls this)
 - Send SMS: `/api/sms/twilio/send` (Manual send)
 - Test Query: `/api/sms/twilio/test` (No SMS sent)
@@ -276,6 +291,7 @@ http://localhost:4040 (See all webhook requests)
 ---
 
 Need help? Check:
+
 - Twilio Docs: https://www.twilio.com/docs/sms
 - ngrok Docs: https://ngrok.com/docs
 - Backend logs: Watch your terminal!

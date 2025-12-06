@@ -9,7 +9,7 @@ from datetime import datetime
 import logging
 import os
 
-from scraper import DAPriceScraper
+from app.scraper import DAPriceScraper
 
 logging.basicConfig(
     level=logging.INFO,

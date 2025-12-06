@@ -164,25 +164,23 @@ class QueryEngine:
         
         context = "\n".join(context_parts)
         
-        # Create prompt
-        prompt = f"""You are a helpful assistant for Filipino farmers. You provide agricultural price information from the Department of Agriculture's Daily Price Index for NCR (National Capital Region).
+        # Create prompt - Tagalog only format
+        prompt = f"""Ikaw ay isang helpful assistant para sa mga magsasaka at mamimili sa Pilipinas. Nagbibigay ka ng impormasyon tungkol sa presyo ng mga produkto mula sa Department of Agriculture para sa NCR.
 
-Answer the user's question based on the price data provided. Be friendly, concise, and helpful. You can respond in Tagalog or English depending on the user's question.
-
-PRICE DATA:
+DATOS NG PRESYO:
 {context}
 
-USER QUESTION: {user_query}
+TANONG NG USER: {user_query}
 
 INSTRUCTIONS:
-- Provide the current price(s) based on the context above
-- Include the date of the price information
-- If there are multiple prices (e.g., different specifications), list them
-- Keep your response short and clear (suitable for SMS)
-- If the question asks in Tagalog, you can respond in Tagalog
-- Always include the peso symbol (₱) for prices
+- Sagutin sa ganitong format lamang: "Sa petsang [buwan at araw], ang presyo ng [produkto] ay ₱[presyo] sa NCR"
+- Halimbawa: "Sa petsang Disyembre 5, ang presyo ng kamatis ay ₱142.54 sa NCR"
+- Kung may specification, idagdag: "Sa petsang Disyembre 5, ang presyo ng kamatis (15-18 pcs/kg) ay ₱142.54 sa NCR"
+- Tagalog lang dapat ang sagot
+- Maikli at tumpak lang
+- Laging ilagay ang peso symbol (₱)
 
-YOUR ANSWER:"""
+SAGOT MO:"""
         
         # Generate response
         response = self.llm.invoke(prompt)

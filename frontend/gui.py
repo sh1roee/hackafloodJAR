@@ -48,8 +48,11 @@ if 'messages' not in st.session_state:
     st.session_state.messages = []
     st.session_state.messages.append({
         "role": "assistant",
-        "content": "Hello! Ask me about commodity prices in NCR. You can ask in English or Tagalog."
+        "content": "Kumusta! Anong pananim o produkto ang gusto mong itanong ang presyo?"
     })
+    st.session_state.waiting_for = "crop"  # or "location" or None
+    st.session_state.crop = None
+    st.session_state.location = None
 
 # Helper function to call backend API
 def query_backend(user_message: str):
@@ -84,16 +87,40 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # Chat input
-if prompt := st.chat_input("Ask about prices... (e.g., Magkano kamatis?)"):
+if prompt := st.chat_input("Mag-type dito..."):
     # Add user message to chat
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
     
-    # Get assistant response
+    # Get assistant response based on conversation state
     with st.chat_message("assistant"):
-        with st.spinner("Searching..."):
-            response = query_backend(prompt)
+        if st.session_state.waiting_for == "crop":
+            # User provided crop
+            st.session_state.crop = prompt
+            st.session_state.waiting_for = "location"
+            response = "Saan ang lokasyon? (Halimbawa: NCR, Metro Manila)"
+            st.markdown(response)
+        elif st.session_state.waiting_for == "location":
+            # User provided location
+            st.session_state.location = prompt
+            st.session_state.waiting_for = None
+            
+            # Now query the backend
+            full_query = f"Magkano ang {st.session_state.crop} sa {st.session_state.location}"
+            
+            with st.spinner("Searching..."):
+                response = query_backend(full_query)
+                st.markdown(response)
+            
+            # Reset for next query
+            st.session_state.crop = None
+            st.session_state.location = None
+            st.session_state.waiting_for = "crop"
+        else:
+            # Default - shouldn't reach here
+            response = "Anong pananim o produkto ang gusto mong itanong ang presyo?"
+            st.session_state.waiting_for = "crop"
             st.markdown(response)
     
     # Add assistant response to chat history

@@ -1,17 +1,29 @@
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from dotenv import load_dotenv
 from datetime import datetime
+from typing import Optional
 import os
 
 from scraper import DAPriceScraper
 from scheduler import scheduler
 from pdf_parser import PricePDFParser
+from ingest_pipeline import IngestionPipeline
+from query_engine import QueryEngine
 
 # Load environment variables
 load_dotenv()
 
-app = FastAPI(title="DA Price Monitor for Farmers")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+CHROMADB_API_KEY = os.getenv("CHROMADB_API_KEY")
+
+if not OPENAI_API_KEY:
+    raise RuntimeError("OPENAI_API_KEY is required in environment")
+if not CHROMADB_API_KEY:
+    raise RuntimeError("CHROMADB_API_KEY is required in environment")
+
+app = FastAPI(title="DA Price Monitor for Farmers - RAG System")
 
 # CORS middleware
 app.add_middleware(
@@ -22,17 +34,42 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize scraper
+# Initialize components
 scraper = DAPriceScraper()
 parser = PricePDFParser()
+
+# Initialize RAG components
+ingestion_pipeline = IngestionPipeline(
+    openai_api_key=OPENAI_API_KEY,
+    chromadb_api_key=CHROMADB_API_KEY
+)
+
+query_engine = QueryEngine(
+    openai_api_key=OPENAI_API_KEY,
+    chromadb_api_key=CHROMADB_API_KEY
+)
+
+
+# Request models
+class QueryRequest(BaseModel):
+    question: str
+    top_k: Optional[int] = 5
+
+
+class SMSQueryRequest(BaseModel):
+    phone: str
+    message: str
 
 
 @app.on_event("startup")
 async def startup_event():
     """Start the scheduler when the app starts"""
-    # Schedule daily scraping at 8:00 AM
+    # Configure scheduler with ingestion pipeline
+    scheduler.set_ingestion_pipeline(ingestion_pipeline)
+    
+    # Schedule daily scraping + ingestion at 8:00 AM
     scheduler.start(hour=8, minute=0)
-    print("✓ Daily scheduler started - will check DA website every day at 8:00 AM")
+    print("✓ Daily scheduler started - will check DA website and ingest data every day at 8:00 AM")
 
 
 @app.on_event("shutdown")
@@ -45,15 +82,26 @@ async def shutdown_event():
 @app.get("/")
 def root():
     return {
-        "message": "DA Price Monitor API",
-        "description": "SMS-based price checking for farmers in NCR",
-        "version": "1.0.0"
+        "message": "DA Price Monitor API - RAG System",
+        "description": "SMS-based price checking for farmers in NCR using RAG",
+        "version": "2.0.0",
+        "features": [
+            "Daily price scraping from DA website",
+            "RAG-powered query system",
+            "Tagalog and English support",
+            "GPT-4o-mini responses",
+            "ChromaDB vector storage"
+        ]
     }
 
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "rag_enabled": True
+    }
 
 
 @app.get("/scrape-latest")
@@ -112,44 +160,111 @@ def get_download_info():
     }
 
 
-@app.get("/parse-latest")
-def parse_latest_pdf():
+# ============================================================================
+# RAG ENDPOINTS
+# ============================================================================
+
+@app.post("/api/ingest")
+def trigger_ingestion(replace_if_exists: bool = False):
     """
-    Parse the latest downloaded PDF and return price data as tables
-    """
-    tables = parser.parse_latest_pdf(show_text=False)
+    Manually trigger ingestion of the latest PDF
     
-    if not tables:
+    Args:
+        replace_if_exists: If True, replace existing data for this date
+    """
+    try:
+        result = ingestion_pipeline.ingest_latest_pdf(replace_if_exists=replace_if_exists)
+        
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Ingestion failed'))
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/query")
+def query_prices(request: QueryRequest):
+    """
+    Query price information using RAG + GPT-4o-mini
+    
+    Supports both Tagalog and English queries.
+    Examples:
+    - "Magkano kamatis sa NCR?"
+    - "What is the price of tomatoes?"
+    - "Presyo ng manok"
+    """
+    try:
+        result = query_engine.process_query(
+            user_query=request.question,
+            top_k=request.top_k,
+            use_llm=True
+        )
+        
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Query failed'))
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/search")
+def search_prices(commodity: str, limit: int = 5):
+    """
+    Semantic search for prices without LLM response
+    
+    Returns raw search results with metadata
+    """
+    try:
+        result = query_engine.process_query(
+            user_query=f"price of {commodity}",
+            top_k=limit,
+            use_llm=False
+        )
+        
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result.get('error', 'Search failed'))
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/query-sms")
+def sms_query(request: SMSQueryRequest):
+    """
+    SMS-optimized query endpoint
+    
+    Returns short, concise responses suitable for SMS
+    """
+    try:
+        answer = query_engine.query_sms_format(request.message)
+        
         return {
-            "success": False,
-            "error": "No tables found in PDF"
-        }
-    
-    # Convert DataFrames to JSON-serializable format
-    result_tables = []
-    for i, df in enumerate(tables):
-        # Clean up the dataframe
-        df_clean = df.copy()
-        
-        # Remove None columns
-        df_clean = df_clean.loc[:, df_clean.columns.notna()]
-        
-        # Convert to dict
-        table_data = {
-            "table_number": i + 1,
-            "page": df.attrs.get('page', None),
-            "shape": {"rows": df.shape[0], "columns": df.shape[1]},
-            "columns": list(df_clean.columns),
-            "data": df_clean.to_dict('records')
+            "phone": request.phone,
+            "message": request.message,
+            "response": answer,
+            "timestamp": datetime.now().isoformat()
         }
         
-        result_tables.append(table_data)
-    
-    return {
-        "success": True,
-        "total_tables": len(tables),
-        "tables": result_tables
-    }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chromadb-stats")
+def get_chromadb_stats():
+    """
+    Get statistics about the ChromaDB collection
+    """
+    try:
+        stats = ingestion_pipeline.get_chromadb_stats()
+        return stats
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

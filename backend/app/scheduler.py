@@ -1,16 +1,16 @@
 """
-Scheduler for daily price scraping
-Uses APScheduler to check DA website every day
+Scheduler for daily price scraping and ingestion
+Uses APScheduler to check DA website every day and ingest data
 """
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime
 import logging
+import os
 
 from scraper import DAPriceScraper
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -19,31 +19,72 @@ logger = logging.getLogger(__name__)
 
 
 class PriceScheduler:
-    """Manages scheduled scraping of DA price index"""
+    """Manages scheduled scraping and ingestion of DA price index"""
     
-    def __init__(self):
-        """Initialize scheduler and scraper"""
+    def __init__(self, ingestion_pipeline=None):
+        """
+        Initialize scheduler and scraper
+        
+        Args:
+            ingestion_pipeline: Optional IngestionPipeline instance for automatic ingestion
+        """
         self.scheduler = BackgroundScheduler()
         self.scraper = DAPriceScraper()
+        self.ingestion_pipeline = ingestion_pipeline
         self.last_run = None
         self.last_result = None
     
-    def scrape_job(self):
-        """Job function that runs the scraper"""
-        logger.info("Starting scheduled scrape job...")
+    def scrape_and_ingest_job(self):
+        """Job function that runs the scraper and optionally ingests data"""
+        logger.info("Starting scheduled scrape and ingest job...")
         try:
-            result = self.scraper.get_latest_daily_price_index()
+            # Step 1: Scrape latest PDF
+            scrape_result = self.scraper.get_latest_daily_price_index()
             self.last_run = datetime.now()
-            self.last_result = result
+            self.last_result = scrape_result
             
-            if result.get("success"):
-                logger.info(f"✓ Successfully scraped: {result.get('date')}")
+            if scrape_result.get("success"):
+                logger.info(f"✓ Successfully scraped: {scrape_result.get('date')}")
+                
+                # Step 2: Automatically ingest if pipeline is configured
+                if self.ingestion_pipeline:
+                    logger.info("Starting automatic ingestion...")
+                    try:
+                        ingest_result = self.ingestion_pipeline.ingest_latest_pdf(
+                            replace_if_exists=False  # Don't replace existing data
+                        )
+                        
+                        if ingest_result.get('success'):
+                            logger.info(f"✓ Ingestion successful: {ingest_result.get('entries_stored')} entries")
+                            self.last_result['ingestion'] = ingest_result
+                        elif 'already exists' in ingest_result.get('error', ''):
+                            logger.info(f"ℹ Data already exists for {ingest_result.get('date')}, skipping ingestion")
+                            self.last_result['ingestion'] = {"skipped": True, "reason": "already exists"}
+                        else:
+                            logger.error(f"✗ Ingestion failed: {ingest_result.get('error')}")
+                            self.last_result['ingestion'] = {"error": ingest_result.get('error')}
+                            
+                    except Exception as e:
+                        logger.error(f"✗ Ingestion error: {e}")
+                        self.last_result['ingestion'] = {"error": str(e)}
+                else:
+                    logger.info("No ingestion pipeline configured, skipping ingestion")
             else:
-                logger.error(f"✗ Scrape failed: {result.get('error')}")
+                logger.error(f"✗ Scrape failed: {scrape_result.get('error')}")
                 
         except Exception as e:
             logger.error(f"Error in scrape job: {e}")
             self.last_result = {"success": False, "error": str(e)}
+    
+    def set_ingestion_pipeline(self, ingestion_pipeline):
+        """
+        Set the ingestion pipeline for automatic ingestion
+        
+        Args:
+            ingestion_pipeline: IngestionPipeline instance
+        """
+        self.ingestion_pipeline = ingestion_pipeline
+        logger.info("✓ Ingestion pipeline configured for automatic ingestion")
     
     def start(self, hour=8, minute=0):
         """
@@ -56,15 +97,16 @@ class PriceScheduler:
         """
         # Add job to run daily at specified time
         self.scheduler.add_job(
-            self.scrape_job,
+            self.scrape_and_ingest_job,
             trigger=CronTrigger(hour=hour, minute=minute),
-            id='daily_price_scrape',
-            name='Daily Price Index Scraper',
+            id='daily_price_scrape_ingest',
+            name='Daily Price Index Scraper + Ingestion',
             replace_existing=True
         )
         
         self.scheduler.start()
-        logger.info(f"✓ Scheduler started - will run daily at {hour:02d}:{minute:02d}")
+        ingest_status = "with ingestion" if self.ingestion_pipeline else "scraping only"
+        logger.info(f"✓ Scheduler started ({ingest_status}) - will run daily at {hour:02d}:{minute:02d}")
     
     def stop(self):
         """Stop the scheduler"""
@@ -72,9 +114,9 @@ class PriceScheduler:
         logger.info("Scheduler stopped")
     
     def run_now(self):
-        """Manually trigger the scrape job immediately"""
+        """Manually trigger the scrape and ingest job immediately"""
         logger.info("Manual scrape triggered")
-        self.scrape_job()
+        self.scrape_and_ingest_job()
         return self.last_result
     
     def get_status(self):

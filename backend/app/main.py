@@ -9,6 +9,8 @@ import os
 from scraper import DAPriceScraper
 from scheduler import scheduler
 from pdf_parser import PricePDFParser
+from ingest_pipeline import IngestionPipeline
+from query_engine import QueryEngine
 
 # Load environment variables
 load_dotenv()

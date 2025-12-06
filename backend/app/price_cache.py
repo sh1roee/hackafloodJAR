@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 import logging
 from chromadb_store import ChromaDBStore
-from core.commodity_mappings import TAGALOG_TO_ENGLISH, extract_location_from_query
+from core.commodity_mappings import TAGALOG_TO_ENGLISH, extract_location_from_query, extract_commodity_from_query
 
 logger = logging.getLogger(__name__)
 
@@ -107,16 +107,28 @@ class PriceCache:
         # Default to 'NCR' when no explicit location found
         location = extract_location_from_query(query) or 'NCR'
         
-        # Try to find commodity in query
-        found_commodity = None
+        # Detect commodity using helper (more precise than substring)
+        detected = extract_commodity_from_query(query)
         found_prices = None
-        
-        # Check each cached commodity
-        for commodity_key, prices in self.cache.items():
-            if commodity_key in query_lower:
-                found_commodity = commodity_key
-                found_prices = prices
-                break
+        if detected:
+            key = detected.lower()
+            # Try exact key first
+            if key in self.cache:
+                found_prices = self.cache[key]
+            else:
+                # Fallback: search close matches
+                for commodity_key, prices in self.cache.items():
+                    if commodity_key == key or key in commodity_key:
+                        found_prices = prices
+                        break
+        else:
+            # Fallback to conservative substring search across cache keys
+            for commodity_key, prices in self.cache.items():
+                # Match whole word tokens to avoid accidental matches
+                tokens = query_lower.replace(',', ' ').split()
+                if commodity_key in tokens:
+                    found_prices = prices
+                    break
         
         if not found_prices:
             return None
@@ -125,9 +137,8 @@ class PriceCache:
         if location:
             loc_matches = [p for p in found_prices if p.get('location', '').lower() == location.lower()]
             if loc_matches:
-                # If exactly one match, return it; else return first match
-                if len(loc_matches) == 1:
-                    return loc_matches[0]
+                # Prefer simplest specification if multiple
+                loc_matches.sort(key=lambda p: (p.get('specification','').lower() not in ['per kilogram','per kilo','/kg'], p.get('price', 0)))
                 return loc_matches[0]
         
         # If multiple variants, return the first entry as a simple heuristic

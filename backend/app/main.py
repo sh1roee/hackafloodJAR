@@ -14,6 +14,8 @@ from processing.ingest_pipeline import IngestionPipeline
 from core.query_engine import QueryEngine
 from price_cache import PriceCache
 from advanced_query import AdvancedQueryHandler
+from sms_handler import sms_handler
+from twilio_sms import twilio_sms
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -61,6 +63,7 @@ price_cache.refresh_cache()  # Load prices on startup
 
 # Initialize advanced query handler (multi-product, comparison, budget, category)
 advanced_query = AdvancedQueryHandler(price_cache=price_cache)
+advanced_handler = advanced_query  # Alias for SMS endpoints
 
 
 # Request models
@@ -351,6 +354,278 @@ def get_cache_stats():
             "cache_duration_hours": price_cache.cache_duration.total_seconds() / 3600,
             "needs_refresh": price_cache._needs_refresh()
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# SMS ENDPOINTS (EngageSpark Integration)
+# ============================================================================
+
+@app.post("/api/sms/webhook")
+async def engagespark_webhook(
+    id: str = None,
+    sender: str = None,
+    message: str = None,
+    **kwargs
+):
+    """
+    EngageSpark SMS Webhook Endpoint
+    
+    Receives incoming SMS from farmers and sends price information back
+    
+    Farmers send SMS to your EngageSpark number:
+    - "Magkano kamatis sa NCR"
+    - "Presyo ng lahat ng gulay"
+    - "Ano mas mura, manok o baboy"
+    
+    System responds with price information
+    """
+    try:
+        logger.info(f"📱 Incoming SMS from {sender}: {message}")
+        
+        # Process the SMS query
+        webhook_data = {
+            "id": id,
+            "from": sender or kwargs.get("from"),
+            "message": message or kwargs.get("text")
+        }
+        
+        processed = sms_handler.handle_inbound_webhook(webhook_data)
+        
+        if not processed['success']:
+            return {"status": "error", "message": "Failed to process SMS"}
+        
+        user_query = processed['message']
+        sender_phone = processed['sender']
+        
+        # Query price system (using cache for FREE queries)
+        result = price_cache.query(user_query)
+        
+        if result['success']:
+            response_text = result['answer']
+        else:
+            # Fallback to advanced query
+            response_text = advanced_handler.handle_query(user_query)
+            if not response_text or response_text.startswith("Pasensya"):
+                response_text = "Pasensya po, hindi ko maintindihan ang tanong. Subukan: 'Magkano kamatis sa NCR'"
+        
+        # Truncate for SMS (160 char limit)
+        sms_response = sms_handler.truncate_for_sms(response_text)
+        
+        # Send response SMS
+        send_result = sms_handler.send_sms(sender_phone, sms_response)
+        
+        logger.info(f"📤 Sent SMS response to {sender_phone}: {sms_response[:50]}...")
+        
+        return {
+            "status": "success",
+            "query": user_query,
+            "response": sms_response,
+            "sms_sent": send_result.get('success', False)
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ SMS webhook error: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/sms/send")
+def send_sms_manual(phone: str, message: str):
+    """
+    Manually send SMS (for testing)
+    
+    Example:
+    POST /api/sms/send
+    {
+        "phone": "09171234567",
+        "message": "Test message"
+    }
+    """
+    try:
+        result = sms_handler.send_sms(phone, message)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/sms/query")
+def sms_query_test(phone: str, question: str):
+    """
+    Test SMS query flow without actual SMS
+    
+    Simulates what would happen when farmer sends SMS
+    """
+    try:
+        # Query the system
+        result = price_cache.query(question)
+        
+        if result['success']:
+            response_text = result['answer']
+        else:
+            response_text = advanced_handler.handle_query(question)
+        
+        # Truncate for SMS
+        sms_response = sms_handler.truncate_for_sms(response_text)
+        
+        return {
+            "success": True,
+            "phone": phone,
+            "query": question,
+            "full_response": response_text,
+            "sms_response": sms_response,
+            "length": len(sms_response),
+            "method": result.get('method', 'advanced')
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# TWILIO SMS ENDPOINTS (Virtual SMS Testing)
+# ============================================================================
+
+@app.post("/api/sms/twilio/webhook")
+async def twilio_webhook(
+    MessageSid: str = "",
+    From: str = "",
+    To: str = "",
+    Body: str = "",
+):
+    """
+    Twilio SMS Webhook Endpoint
+    
+    This endpoint receives incoming SMS messages from Twilio.
+    Twilio sends a POST request with form data when someone texts your Twilio number.
+    
+    Setup:
+    1. Sign up at https://www.twilio.com/try-twilio (Free $15 credit)
+    2. Get a phone number
+    3. Configure webhook URL: https://your-ngrok-url.ngrok.io/api/sms/twilio/webhook
+    4. Add credentials to .env file
+    
+    Usage:
+    - Farmer texts your Twilio number: "Magkano kamatis?"
+    - Twilio sends webhook to this endpoint
+    - System queries price database
+    - Response SMS sent back automatically
+    """
+    try:
+        logger.info(f"📱 Twilio webhook received from {From}: {Body}")
+        
+        # Process the incoming SMS
+        webhook_data = {
+            "MessageSid": MessageSid,
+            "From": From,
+            "To": To,
+            "Body": Body
+        }
+        
+        processed = twilio_sms.handle_inbound_webhook(webhook_data)
+        
+        if not processed['success']:
+            logger.error("Failed to process Twilio webhook")
+            return {"status": "error", "message": "Failed to process SMS"}
+        
+        user_query = processed['message']
+        sender_phone = processed['sender']
+        
+        # Query price system (using cache for FREE queries)
+        result = price_cache.query(user_query)
+        
+        if result['success']:
+            response_text = result['answer']
+        else:
+            # Fallback to advanced query
+            response_text = advanced_handler.handle_query(user_query)
+            if not response_text or response_text.startswith("Pasensya"):
+                response_text = "Pasensya po, hindi ko maintindihan ang tanong. Subukan: 'Magkano kamatis sa NCR'"
+        
+        # Truncate for SMS (160 char limit for single SMS)
+        sms_response = twilio_sms.truncate_for_sms(response_text)
+        
+        # Send response SMS via Twilio
+        send_result = twilio_sms.send_sms(sender_phone, sms_response)
+        
+        logger.info(f"📤 Sent SMS response to {sender_phone}: {sms_response[:50]}...")
+        
+        return {
+            "status": "success",
+            "query": user_query,
+            "response": sms_response,
+            "sms_sent": send_result.get('success', False),
+            "message_id": send_result.get('message_id', '')
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Twilio webhook error: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/sms/twilio/send")
+def send_twilio_sms(phone: str, message: str):
+    """
+    Manually send SMS via Twilio (for testing)
+    
+    Example:
+    POST /api/sms/twilio/send
+    {
+        "phone": "+639171234567",
+        "message": "Test message from DA Price Monitor"
+    }
+    """
+    try:
+        result = twilio_sms.send_sms(phone, message)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/sms/twilio/balance")
+def get_twilio_balance():
+    """
+    Check Twilio account balance
+    
+    Useful to see how much credit you have left
+    """
+    try:
+        result = twilio_sms.get_account_balance()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/sms/twilio/test")
+def test_twilio_query(phone: str, question: str):
+    """
+    Test SMS query flow with Twilio (without sending actual SMS)
+    
+    Simulates what would happen when farmer sends SMS via Twilio
+    """
+    try:
+        # Query the system
+        result = price_cache.query(question)
+        
+        if result['success']:
+            response_text = result['answer']
+        else:
+            response_text = advanced_handler.handle_query(question)
+        
+        # Truncate for SMS
+        sms_response = twilio_sms.truncate_for_sms(response_text)
+        
+        return {
+            "success": True,
+            "phone": phone,
+            "query": question,
+            "full_response": response_text,
+            "sms_response": sms_response,
+            "length": len(sms_response),
+            "would_send": True,
+            "method": result.get('method', 'advanced')
+        }
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

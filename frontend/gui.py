@@ -112,7 +112,7 @@ if prompt := st.chat_input("Mag-type dito..."):
                 # User only provided crop
                 st.session_state.crop = prompt
                 st.session_state.waiting_for = "location"
-                response = "Saan ang lokasyon? (Halimbawa: NCR, Metro Manila)"
+                response = "Saan ang lokasyon?"
                 st.markdown(response)
         elif st.session_state.waiting_for == "location":
             # User provided location
